@@ -1,4 +1,5 @@
 package schel;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public final class BankAlgo{
@@ -36,7 +37,7 @@ public final class BankAlgo{
 	}
 
 	public static boolean reqCheck(int[] req, int procNum, int[] avali, int[][] max, int[][] alloc){
-		//check if a request can be allocated and still be in a safe state
+		//check if a request can be allocatted and still be in a safe state
 		int[][] need = matSub(max, alloc);
 		if (check(need[procNum],req)){
 			if(check(avali,req)){
@@ -52,6 +53,22 @@ public final class BankAlgo{
 		}
 		return false;
 	}
+
+	public static boolean runReq(Scheduler.Job reqJob, ArrayList<Scheduler.Job> jobs, int avaliDev){
+			int[] req = {reqJob.getRequestedDevices()};
+			int procNum = reqJob.getJob_no();
+			int[] avali = {avaliDev};
+			int[][] max = new int[jobs.size()][1];
+			int[][] alloc = new int[jobs.size()][1];
+			for(int i = 0 ; i < jobs.size(); i++){
+				max[i][0] = jobs.get(i).getMax_devices();
+				if(i != procNum){
+					alloc[i][0] = jobs.get(i).getRequestedDevices();
+				}
+			}
+			return reqCheck(req, procNum, avali, max, alloc);
+	}
+		
 
 	private static boolean check(int[] avali, int[] need){
 		//checks that everything in avali is greater than the need
@@ -95,7 +112,7 @@ public final class BankAlgo{
 	}
 
 	public static int[][] matSub(int[][] x, int[][] y){
-		int n = x.length;//number of rows
+		int n = x.length;//numbe:wr of rows
 		int m = x[0].length;//number of columns
 		int[][] result = new int[n][m];
 		for (int i = 0; i < n; i++){
@@ -105,6 +122,7 @@ public final class BankAlgo{
 		}
 		return result;
 	}
+
 
 	public static void main(String args[]){
 		//derived from http://javaingrab.blogspot.com/2013/06/implementation-of-bankers-algorithm.html
