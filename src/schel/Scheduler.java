@@ -1,3 +1,5 @@
+package schel;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
@@ -182,9 +184,10 @@ public class Scheduler {
         while( jit.hasNext() ) {
             Job j = jit.next();
             if (j.hasRequest(quantum_interrupt)) {
-                if (j.processRequest()) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
+                if (BankAlgo.runReq(j, allJobs, system_available_devices)) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
                     // request granted
                     system_available_devices-=j.getRequestedDevices();
+					j.allocated_devices += j.getRequestedDevices();
                     j.setState(State.REQUESTING);
                     ready_queue.add(j);
                     jit.remove();
@@ -199,9 +202,10 @@ public class Scheduler {
         Job j = ready_queue.pop();
         for(int i=0; i<system_quantum; i++) {
             if (j.getState()==State.READY && j.hasRequest(i)) {
-                if (j.processRequest()) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
+                if (BankAlgo.runReq(j, allJobs, system_available_devices)) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
                     // request granted
                     system_available_devices-=j.getRequestedDevices();
+					j.allocated_devices += j.getRequestedDevices();
                     ready_queue.add(j);
                     if (!ready_queue.isEmpty()){
                         j = ready_queue.pop();
@@ -218,6 +222,7 @@ public class Scheduler {
 
             if (j.getState()==State.REQUESTING && j.hasRelease(i)) {
                 system_available_devices+=j.getRequestedDevices();
+				j.allocated_devices -= j.getRequestedDevices();
                 j.setState(State.READY);
                 processWaitQueue(i);
             }
@@ -325,6 +330,7 @@ public class Scheduler {
         private int max_devices;
         private int run_time;
         private int priority;
+		private int allocated_devices;
         private State state;
         private Request req;
         private Release release;
@@ -382,6 +388,7 @@ public class Scheduler {
 
         private void releaseDevices() {
             system_available_devices+=this.getRequestedDevices();
+			allocated_devices -= this.getRequestedDevices();
         }
 
 
@@ -457,6 +464,7 @@ public class Scheduler {
             this.run_time = run_time;
             this.priority = priority;
             this.state = State.INHOLDQUEUE;
+			this.allocated_devices = 0;
         }
 
         @Override
@@ -498,5 +506,9 @@ public class Scheduler {
         public int getPriority() {
             return priority;
         }
+		
+		public int getAllocated_devices(){
+			return allocated_devices;
+		}
     }
 }

@@ -39,7 +39,7 @@ public final class BankAlgo{
 	public static boolean reqCheck(int[] req, int procNum, int[] avali, int[][] max, int[][] alloc){
 		//check if a request can be allocatted and still be in a safe state
 		int[][] need = matSub(max, alloc);
-		if (check(need[procNum],req)){
+		if (check(need[procNum-1],req)){
 			if(check(avali,req)){
 				avali = vecSub(avali, req);
 				int[] allocTmp = vecAdd(alloc[procNum], req);
@@ -63,7 +63,7 @@ public final class BankAlgo{
 			for(int i = 0 ; i < jobs.size(); i++){
 				max[i][0] = jobs.get(i).getMax_devices();
 				if(i != procNum){
-					alloc[i][0] = jobs.get(i).getRequestedDevices();
+					alloc[i][0] = jobs.get(i).getAllocated_devices();
 				}
 			}
 			return reqCheck(req, procNum, avali, max, alloc);
@@ -112,7 +112,7 @@ public final class BankAlgo{
 	}
 
 	public static int[][] matSub(int[][] x, int[][] y){
-		int n = x.length;//numbe:wr of rows
+		int n = x.length;//number of rows
 		int m = x[0].length;//number of columns
 		int[][] result = new int[n][m];
 		for (int i = 0; i < n; i++){
