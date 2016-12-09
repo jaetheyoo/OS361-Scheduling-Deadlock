@@ -14,7 +14,7 @@ public final class BankAlgo{
 		for (int i = 0; i<n; i++){
 			finish[i] = false;
 		}
-		
+
 		int doneJobs = 0;
 		while(doneJobs<n){
 			boolean didAlloc = false;
@@ -39,13 +39,11 @@ public final class BankAlgo{
 	public static boolean reqCheck(int[] req, int procNum, int[] avali, int[][] max, int[][] alloc){
 		//check if a request can be allocatted and still be in a safe state
 		int[][] need = matSub(max, alloc);
-		if (check(need[procNum-1],req)){
-			if(check(avali,req)){
+		if (check(need[procNum],req)){//check that request no larger than needed devices
+			if(check(avali,req)){//check that req no larger that avaliable
 				avali = vecSub(avali, req);
 				int[] allocTmp = vecAdd(alloc[procNum], req);
 				alloc[procNum] = allocTmp;
-				int[] needTmp = vecSub(need[procNum], req);
-				need[procNum] = needTmp;
 				if(safeCheck(avali, max, alloc)){
 					return true;
 				}
@@ -55,20 +53,22 @@ public final class BankAlgo{
 	}
 
 	public static boolean runReq(Scheduler.Job reqJob, ArrayList<Scheduler.Job> jobs, int avaliDev){
-			int[] req = {reqJob.getRequestedDevices()};
-			int procNum = reqJob.getJob_no();
-			int[] avali = {avaliDev};
-			int[][] max = new int[jobs.size()][1];
-			int[][] alloc = new int[jobs.size()][1];
-			for(int i = 0 ; i < jobs.size(); i++){
-				max[i][0] = jobs.get(i).getMax_devices();
-				if(i != procNum){
-					alloc[i][0] = jobs.get(i).getAllocated_devices();
-				}
+		//run with scheduler input to implement this banker's algo
+		int[] req = {reqJob.getRequestedDevices()};
+		int procNum = reqJob.getJob_no() - 1;
+		int[] avali = {avaliDev};
+		int[][] max = new int[jobs.size()][1];
+		int[][] alloc = new int[jobs.size()][1];
+		for(int i = 0 ; i < jobs.size(); i++){
+			max[i][0] = jobs.get(i).getMax_devices();
+			if(i != procNum){
+				//alloc[i][0] = jobs.get(i).getAllocated_devices(); need to implement allocated devices in scheduler
+				//if want to use this funciton
 			}
-			return reqCheck(req, procNum, avali, max, alloc);
+		}
+		return reqCheck(req, procNum, avali, max, alloc);
 	}
-		
+
 
 	private static boolean check(int[] avali, int[] need){
 		//checks that everything in avali is greater than the need
@@ -126,7 +126,7 @@ public final class BankAlgo{
 
 	public static void main(String args[]){
 		//derived from http://javaingrab.blogspot.com/2013/06/implementation-of-bankers-algorithm.html
-		int need[][],allocate[][],max[][],avail[][],req[][],np,nr;
+		int need[][],allocate[][],max[][],avail[][],req[][],np,nr,reqProcNum;
 		Scanner sc=new Scanner(System.in);
 		System.out.print("Enter no. of processes and resources : ");
 		np=sc.nextInt();  //no. of process
@@ -150,14 +150,25 @@ public final class BankAlgo{
 		System.out.println("Enter available matrix -->");
 		for(int j=0;j<nr;j++)
 			avail[0][j]=sc.nextInt();  //available matrix
-		
-		System.out.println("Enter request vector -->");
-		for(int j=0;j<nr;j++)
-			req[0][j]=sc.nextInt();  //request matrix
 
-		sc.close();		
-		System.out.println(safeCheck(avail[0], max, allocate));
-		System.out.println(reqCheck(req[0], 0, avail[0], max, allocate));
+		System.out.println("Would you like to test a request?(y/n)");
+		String ans = sc.next();
+		if("y".equalsIgnoreCase(ans)){
+
+			System.out.println("Enter request process number-->");
+			reqProcNum=sc.nextInt();  //request process number
+
+			System.out.println("Enter request vector -->");
+			for(int j=0;j<nr;j++)
+				req[0][j]=sc.nextInt();  //request matrix
+
+			sc.close();		
+			System.out.println("Request is safe?: " + reqCheck(req[0], reqProcNum, avail[0], max, allocate));
+		}
+		else{
+			sc.close();		
+			System.out.println("State is safe?: " + safeCheck(avail[0], max, allocate));
+		}
 	}
 
 }
