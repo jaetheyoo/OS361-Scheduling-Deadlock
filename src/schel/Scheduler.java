@@ -11,13 +11,16 @@ import java.util.regex.Pattern;
  * Created by Jae on 12/4/16.
  */
 public class Scheduler {
+    public static boolean quantumInterrupt;
     public static int system_time = 0;
     public static int system_max_main_memory = 0;
     public static int system_available_memory = 0;
     public static int system_max_devices = 0;
     public static int system_available_devices = 0;
     public static int system_quantum = 0;
+    public static int quantum_slice=0;
     public static int system_timeStamp = 0;
+    public static int printTime;
     public static ArrayList<Job> allJobs = new ArrayList<>();
     public static LinkedList<Job> submit_queue = new LinkedList<>();
     public static HoldQueue hold_queue1 = new HoldQueue(JobSchedule.SJF);
@@ -39,9 +42,17 @@ public class Scheduler {
                 Scanner s = new Scanner(f);
                 while (true) { // do all the scheduling work here
                     try {
+                        system_time++;
                         processInternalEvents(s);
                         processExternalEvents(s);
-                        system_time+=system_quantum;
+                        if (system_time<50) printDisplay(system_time);
+
+                        if (system_time==printTime) {
+                            printDisplay(system_time);
+                        }
+                        if (system_time>=9999) {
+                            System.exit(0);
+                        }
                     } catch (Exception e) {
                         System.out.println("ERROR:" + e.getMessage());
                         e.printStackTrace();
@@ -85,7 +96,8 @@ public class Scheduler {
                             p = Pattern.compile("D ([0-9]+)");
                             m=p.matcher(input);
                             if (m.find()) {
-                                return printDisplay(Integer.parseInt(m.group(1)));
+                                printTime=Integer.parseInt(m.group(1));
+                                return Integer.parseInt(m.group(1));
                             } else {
                                 // TODO: throw error
                                 return -1;
@@ -95,23 +107,26 @@ public class Scheduler {
                 }
             }
         } else {
-            System.out.println("Scheduling Complete");
-            System.exit(0);
+
             return 0;
+
         }
     }
 
     private static int printDisplay(int time) {
+        System.out.println("FOR SYSTEM WITH MAX MEMORY: " + system_max_main_memory + ", MAX DEVICES: " + system_max_devices +", AND QUANTUM="+system_quantum);
+        System.out.println("JOB | STATUS | ANALYSIS | CURRENT TIME: "+ system_time);
         for(Job j: allJobs) {
             System.out.println(j.display());
         }
+        System.out.println("-----------------------------------------------------------------------------------");
+
         return time;
         //TODO: print display
 
     }
 
     private static int processRelease(int release_time, int job_no, int released_devices) {
-
         for(int i=0; i<allJobs.size(); i++) {
             if (allJobs.get(i).getJob_no()==job_no) {
                 allJobs.get(i).scheduleRelease(release_time, released_devices);
@@ -153,6 +168,7 @@ public class Scheduler {
         system_max_devices = my_devices;
         system_available_devices = my_devices;
         system_quantum = my_quantum;
+        quantum_slice = my_quantum;
         return my_start_time;
     }
 
@@ -162,26 +178,26 @@ public class Scheduler {
 
     private static void processInternalEvents(Scanner s) {
         if (!ready_queue.isEmpty()) {
-            processCPU();
+            quantum_slice = processCPU(quantum_slice);
         }
 
         if (!wait_queue.isEmpty()) {
-            processWaitQueue(system_quantum);
+            processWaitQueue();
         }
 
         for(HoldQueue holdQueue: hold_queues) {
             //processHoldQueue(holdQueue, system_quantum);
         }
-        if (system_time+system_quantum >= system_timeStamp && !submit_queue.isEmpty()) {
+        if (system_time >= system_timeStamp && !submit_queue.isEmpty()) {
             processSubmitQueue();
         }
     }
 
-    private static void processWaitQueue(int quantum_interrupt) {
+    private static void processWaitQueue() {
         Iterator<Job> jit = wait_queue.iterator();
         while( jit.hasNext() ) {
             Job j = jit.next();
-            if (j.hasRequest(quantum_interrupt)) {
+            if (j.hasRequest()) {
                 if (j.processRequest()) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
                     // request granted
                     system_available_devices-=j.getRequestedDevices();
@@ -195,14 +211,17 @@ public class Scheduler {
         }
     }
 
-    private static void processCPU() { // round robin
-        Job j = ready_queue.pop();
-        for(int i=0; i<system_quantum; i++) {
-            if (j.getState()==State.READY && j.hasRequest(i)) {
+    private static int processCPU(int quantum_slice) { // round robin
+        Job j = ready_queue.peek();
+        if (quantum_slice > 0) {
+            j.run();
+
+            if (j.getState() == State.READY && j.hasRequest()) {
                 if (j.processRequest()) { // ********** IMPLEMENT BANKERS ALGORITHM HERE
                     // request granted
                     system_available_devices-=j.getRequestedDevices();
                     ready_queue.add(j);
+                    j.setState(State.READY);
                     if (!ready_queue.isEmpty()){
                         j = ready_queue.pop();
                     }
@@ -216,22 +235,27 @@ public class Scheduler {
                 }
             }
 
-            if (j.getState()==State.REQUESTING && j.hasRelease(i)) {
+            if (j.hasRelease()) {
                 system_available_devices+=j.getRequestedDevices();
                 j.setState(State.READY);
-                processWaitQueue(i);
+                processWaitQueue();
             }
+
+            quantum_slice--;
 
             if (j.getState()== State.FINISHED) {
                 releaseMemory(j.getMemory_required());
                 complete_queue.add(j);
-                if (!ready_queue.isEmpty()) {
-                    j = ready_queue.pop();
-                }
+                ready_queue.pop();
+                quantum_slice=system_quantum;
             }
-            j.run();
+        } else {
+            j = ready_queue.pop();
+            ready_queue.add(j);
+            quantum_slice = system_quantum;
+            return processCPU(quantum_slice);
         }
-        ready_queue.add(j);
+        return quantum_slice;
     }
 
     private static void processExternalEvents(Scanner s) throws Exception {
@@ -244,7 +268,9 @@ public class Scheduler {
         Job j = submit_queue.peek();
         if (j.getArrival_time() > system_time) {
             // job hasn't arrived yet
+            System.out.println("NOT ARRIVED YET");
         } else if (j.getMemory_required() > system_available_memory) {
+            System.out.println("NOT ENOUGH MEM");
             j.setState(State.INHOLDQUEUE);
             hold_queues[j.getPriority()-1].add(j); // hold queues start at 1
             submit_queue.pop();
@@ -258,7 +284,6 @@ public class Scheduler {
 
     private static void allocateMemory(int memory_required) {
         system_available_memory-=memory_required;
-        System.out.println(system_available_memory);
     }
 
 
@@ -267,7 +292,7 @@ public class Scheduler {
 
 
     public enum State {
-        INHOLDQUEUE, FINISHED, READY, REJECTED, REQUESTING, WAITING
+        SUBMITTED, INHOLDQUEUE, FINISHED, READY, REJECTED, REQUESTING, WAITING
     }
 
     public enum JobSchedule {
@@ -319,26 +344,95 @@ public class Scheduler {
 
 
     public static class Job {
+        private int turnaroundTime;
+        private double weightedTurnaroundTime;
         private int arrival_time;
         private int job_no;
         private int memory_required;
         private int max_devices;
+        private int total_runtime;
         private int run_time;
         private int priority;
         private State state;
         private Request req;
         private Release release;
 
-        public boolean hasRequest(int quantum_interrupt) {
-            if (req!=null && req.getTime() <= system_time + quantum_interrupt) {
-                    return true;
+        public void setState(State state) {
+            this.state = state;
+        }
+
+        public State getState() {
+            return this.state;
+        }
+
+        public Job(int arrival_time, int job_no, int memory_required, int max_devices, int run_time, int priority) {
+            this.arrival_time = arrival_time;
+            this.job_no = job_no;
+            this.memory_required = memory_required;
+            this.max_devices = max_devices;
+            this.run_time = run_time;
+            this.total_runtime = run_time;
+            this.priority = priority;
+            this.state = State.SUBMITTED;
+        }
+
+        @Override
+        public String toString() { // for debugging purposes
+            return ("Arrival time: " + arrival_time + " | job number: " + job_no + " | memory required: " + memory_required + " | max devices required: " + max_devices + " | run time: " + run_time + " | priority: " + priority);
+        }
+
+        public String display() {
+            // TODO: calculate turnaround time
+
+            if (this.state == State.FINISHED) {
+                return "[" + this.job_no + "] | " + this.getState() + "| turnaround time: " + this.getTurnaroundTime() + " | weighted turnouround time: " + this.getWeightedTurnaroundTime();
+            } else if (this.state == State.REJECTED) {
+                return "[" + this.job_no + "] | REJECTED, insufficient main memory or devices";
+            } else  if (this==ready_queue.peek() && quantum_slice>0){
+                return ("[" + this.job_no + "] | ON CPU | Remaining service time: " + run_time);
+            } else {
+                return ("[" + this.job_no + "] | " + this.state.toString() + " | Remaining service time: " + run_time);
+
+            }
+        }
+
+        public int getArrival_time() {
+            return arrival_time;
+        }
+
+        public int getJob_no() {
+            return job_no;
+        }
+
+        public int getMemory_required() {
+            return memory_required;
+        }
+
+        public int getMax_devices() {
+            return max_devices;
+        }
+
+        public int getRun_time() {
+            return run_time;
+        }
+
+        public int getPriority() {
+            return priority;
+        }
+
+        public boolean hasRequest() {
+            if (req != null && req.getTime() == system_time) {
+                return true;
+            } else if (req != null && req.getTime() < system_time) {
+                this.req = null;
+                return false;
             } else {
                 return false;
             }
         }
 
-        public boolean hasRelease(int quantum_interrupt) {
-            if (release!=null && release.getTime() <=system_time + quantum_interrupt) {
+        public boolean hasRelease() {
+            if (release != null && release.getTime() == system_time) {
                 return true;
             } else {
                 return false;
@@ -352,12 +446,13 @@ public class Scheduler {
                 this.req = new Request(request_time, devices_requested);
             }
         }
+
         public void scheduleRelease(int release_time, int devices_released) {
             this.req = new Request(release_time, devices_released);
         }
 
         public boolean processRequest() {
-            if (this.req.getDevices()>system_available_devices) {
+            if (this.req.getDevices() > system_available_devices) {
                 this.setState(State.WAITING);
                 return false;
             } else {
@@ -372,18 +467,31 @@ public class Scheduler {
 
         public void run() {
             this.run_time--;
-            if (run_time<=0) {
-                if (this.state==State.REQUESTING) {
+            if (run_time <= 0) {
+                if (this.state == State.REQUESTING) {
                     this.releaseDevices();
                 }
-                this.state=State.FINISHED;
+                this.state = State.FINISHED;
+                this.setTurnaroundTime(system_time);
             }
         }
 
         private void releaseDevices() {
-            system_available_devices+=this.getRequestedDevices();
+            system_available_devices += this.getRequestedDevices();
         }
 
+        public void setTurnaroundTime(int finish_time) {
+            this.turnaroundTime = finish_time - this.arrival_time;
+            this.weightedTurnaroundTime = turnaroundTime / (double)this.total_runtime;
+        }
+
+        public int getTurnaroundTime() {
+            return turnaroundTime;
+        }
+
+        public double getWeightedTurnaroundTime() {
+            return weightedTurnaroundTime;
+        }
 
         /* ------ REQUEST STRUCT DEFINITION ------ */
 
@@ -392,8 +500,8 @@ public class Scheduler {
             private int devices;
 
             Request(int t, int d) {
-                time=t;
-                devices=d;
+                time = t;
+                devices = d;
             }
 
             public int getTime() {
@@ -420,8 +528,8 @@ public class Scheduler {
             private int devices;
 
             Release(int t, int d) {
-                time=t;
-                devices=d;
+                time = t;
+                devices = d;
             }
 
             public int getTime() {
@@ -439,64 +547,6 @@ public class Scheduler {
             public void setDevices(int devices) {
                 this.devices = devices;
             }
-        }
-
-        public void setState(State state) {
-            this.state = state;
-        }
-
-        public State getState() {
-            return this.state;
-        }
-
-        public Job(int arrival_time, int job_no, int memory_required, int max_devices, int run_time, int priority) {
-            this.arrival_time = arrival_time;
-            this.job_no = job_no;
-            this.memory_required = memory_required;
-            this.max_devices = max_devices;
-            this.run_time = run_time;
-            this.priority = priority;
-            this.state = State.INHOLDQUEUE;
-        }
-
-        @Override
-        public String toString() { // for debugging purposes
-            return ("Arrival time: " + arrival_time + " | job number: " + job_no + " | memory required: " + memory_required + " | max devices required: " +max_devices + " | run time: " + run_time + " | priority: " + priority);
-        }
-
-        public String display() {
-            // TODO: calculate turnaround time
-            if (this.state==State.FINISHED) {
-                return "[Job no]  STATE | turnaround time | weighted turnouround time";
-            } else if (this.state==State.REJECTED) {
-                return "REJECTED, insufficient main memory or devices";
-            } else {
-                return ("[" + this.job_no + "] State: " + this.state.toString() + " | Remaining service time: " + run_time);
-            }
-        }
-
-        public int getArrival_time() {
-            return arrival_time;
-        }
-
-        public int getJob_no() {
-            return job_no;
-        }
-
-        public int getMemory_required() {
-            return memory_required;
-        }
-
-        public int getMax_devices() {
-            return max_devices;
-        }
-
-        public int getRun_time() {
-            return run_time;
-        }
-
-        public int getPriority() {
-            return priority;
         }
     }
 }
